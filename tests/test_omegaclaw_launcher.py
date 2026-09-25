@@ -29,7 +29,11 @@ printf '\\n'
 
 def _host_omega_version() -> str:
     result = subprocess.run(
-        [str(LAUNCHER), "--version"],
+        [
+            "python3",
+            "-c",
+            "from src.helper import omega_version; print(omega_version())",
+        ],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -123,7 +127,7 @@ def test_matching_image_version_allows_start(tmp_path):
 
 
 def test_mismatched_image_version_aborts_before_container_replace(tmp_path):
-    result = _run_launcher(tmp_path, image_version="Omega version=v0.0.0-test")
+    result = _run_launcher(tmp_path, image_version="v0.0.0-test")
 
     assert result.returncode != 0
     assert "The launcher script and Docker image versions do not match." in result.stderr

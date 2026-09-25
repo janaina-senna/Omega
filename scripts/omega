@@ -510,7 +510,14 @@ start
 
 }
 
-version() {
+_trim() {
+    local value="${1-}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    printf '%s' "$value"
+}
+
+bare_omega_version() {
     local script_dir
     local repo_root
 
@@ -522,58 +529,47 @@ version() {
     )
 }
 
-_trim() {
-    local value="${1-}"
-    value="${value#"${value%%[![:space:]]*}"}"
-    value="${value%"${value##*[![:space:]]}"}"
-    printf '%s' "$value"
+version() {
+    local bare
+    bare="$(_trim "$(bare_omega_version 2>/dev/null || true)")"
+    if [ -z "$bare" ]; then
+        printf '%s\n' "Omega unknown"
+    else
+        printf 'Omega version=%s\n' "$bare"
+    fi
 }
 
-normalize_omega_version() {
-    local version
-    version="$(_trim "${1-}")"
-    version="${version%$'\r'}"
-    if [ -z "$version" ]; then
-        return 1
-    fi
-    if [[ "$version" == "Omega version="* ]]; then
-        :
-    elif [[ "$version" == "Omega "* ]]; then
-        version="Omega version=${version#Omega }"
-    else
-        version="Omega version=${version}"
-    fi
+strip_dirty_suffix() {
+    local version="$1"
     if [[ "$version" == *-dirty ]]; then
         version="${version%-dirty}"
     fi
     printf '%s' "$version"
 }
 
-omega_version_is_unknown() {
-    local version="${1-}"
-    [[ -z "$version" || "$version" == "Omega unknown" || "$version" == "Omega version=unknown" ]]
-}
-
 read_image_omega_version() {
     local raw=""
     raw="$(docker run --rm --entrypoint cat "${image}" /PeTTa/repos/Omega/version 2>/dev/null || true)"
-    if omega_version_is_unknown "$(_trim "$raw")"; then
-        raw="$(docker run --rm --entrypoint /PeTTa/repos/Omega/scripts/omega "${image}" --version 2>/dev/null || true)"
+    raw="$(_trim "$raw")"
+    if [ -z "$raw" ]; then
+        raw="$(docker run --rm --workdir /PeTTa/repos/Omega --entrypoint python3 "${image}" \
+            -c 'from src.helper import omega_version; print(omega_version())' 2>/dev/null || true)"
+        raw="$(_trim "$raw")"
     fi
     printf '%s' "$raw"
 }
 
 ensure_launcher_matches_image() {
-    local script_raw script_version image_raw image_version
-    script_raw="$(version 2>/dev/null || true)"
-    if ! script_version="$(normalize_omega_version "$script_raw")" || omega_version_is_unknown "$script_version"; then
+    local script_version image_version
+    script_version="$(strip_dirty_suffix "$(_trim "$(bare_omega_version 2>/dev/null || true)")")"
+    if [ -z "$script_version" ]; then
         echo "Could not determine the launcher script version; skipping version check." >&2
         echo "Use the same tag for scripts/omega and the Docker image." >&2
         return 0
     fi
 
-    image_raw="$(read_image_omega_version)"
-    if ! image_version="$(normalize_omega_version "$image_raw")" || omega_version_is_unknown "$image_version"; then
+    image_version="$(strip_dirty_suffix "$(read_image_omega_version)")"
+    if [ -z "$image_version" ]; then
         echo "Could not determine the Docker image version; skipping version check." >&2
         echo "Use the same tag for scripts/omega and the Docker image." >&2
         return 0
@@ -582,8 +578,8 @@ ensure_launcher_matches_image() {
     if [[ "$script_version" != "$image_version" ]]; then
         cat >&2 <<EOF
 The launcher script and Docker image versions do not match.
-  Script: ${script_version}
-  Image (${image}): ${image_version}
+  Script: Omega version=${script_version}
+  Image (${image}): Omega version=${image_version}
 
 Update the script or the image so both are the same tag/commit. For example:
   curl -fsSL https://github.com/singnet/Omega/raw/refs/tags/<tag>/scripts/omega | bash -s -- singularitynet/omega:<tag>
