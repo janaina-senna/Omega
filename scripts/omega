@@ -587,7 +587,6 @@ The launcher script and Docker image versions do not match.
 
 Update the script or the image so both are the same tag/commit. For example:
   curl -fsSL https://github.com/singnet/Omega/raw/refs/tags/<tag>/scripts/omega | bash -s -- singularitynet/omega:<tag>
-  ./scripts/omega start -d singularitynet/omega:<tag>
 EOF
         return 1
     fi
