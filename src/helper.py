@@ -208,7 +208,7 @@ def projectRootDirectory():
 
 
 def omega_version(repo_root: str | os.PathLike | None = None) -> str:
-    """Return the bare checkout version, or an empty string when unknown."""
+    """Return the bare checkout version, or "unknown" when it cannot be determined."""
     root = Path(repo_root) if repo_root is not None else Path(projectRootDirectory())
 
     try:
@@ -238,13 +238,13 @@ def omega_version(repo_root: str | os.PathLike | None = None) -> str:
     except OSError:
         pass
 
-    return ""
+    return "unknown"
 
 
 def test_omega_version():
     with TemporaryDirectory() as directory:
         root = Path(directory)
-        assert omega_version(root) == ""
+        assert omega_version(root) == "unknown"
 
         (root / "version").write_text("v1.2.3-4-g1234567\n", encoding="utf-8")
         assert omega_version(root) == "v1.2.3-4-g1234567"

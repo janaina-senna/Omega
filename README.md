@@ -72,9 +72,9 @@ Ensure that you have [Docker installed](https://docs.docker.com/engine/install/)
 
 The `scripts/omega` launcher and the Docker image must be the same version.
 `scripts/omega start` (and the interactive bootstrap) compare the host script
-version with the version baked into the image and abort if they differ. Use the
-same git tag for both, for example `scripts/omega` from `v0.1.19` with
-`singularitynet/omega:v0.1.19`.
+version with the version baked into the image and abort when both are known
+and differ. A `curl | bash` install has no checkout, so that path warns and
+continues. Use the same git tag for a checkout and its image.
 
 Run Omega using the next command:
 ```

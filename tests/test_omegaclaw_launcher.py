@@ -9,16 +9,27 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = REPO_ROOT / "scripts" / "omega"
 FAKE_DOCKER = """\
 #!/bin/sh
-is_version_probe=0
+version_path=""
 for arg in "$@"; do
   case "$arg" in
-    /PeTTa/repos/Omega/version|--version)
-      is_version_probe=1
+    /PeTTa/repos/Omega/version|/PeTTa/repos/OmegaClaw-Core/version)
+      version_path="$arg"
       ;;
   esac
 done
-if [ "$is_version_probe" -eq 1 ]; then
-  printf '%s\\n' "${OMEGA_TEST_IMAGE_VERSION}"
+if [ -n "$version_path" ]; then
+  case "$version_path" in
+    /PeTTa/repos/Omega/version)
+      if [ -n "${OMEGA_TEST_OMEGA_VERSION+x}" ]; then
+        printf '%s\\n' "${OMEGA_TEST_OMEGA_VERSION}"
+      else
+        printf '%s\\n' "${OMEGA_TEST_IMAGE_VERSION}"
+      fi
+      ;;
+    *)
+      printf '%s\\n' "${OMEGA_TEST_LEGACY_VERSION}"
+      ;;
+  esac
   exit 0
 fi
 printf 'docker'
@@ -29,12 +40,7 @@ printf '\\n'
 
 def _host_omega_version() -> str:
     result = subprocess.run(
-        [
-            "python3",
-            "-c",
-            "from src.helper import omega_version; print(omega_version())",
-        ],
-        cwd=REPO_ROOT,
+        ["git", "-C", str(REPO_ROOT), "describe", "--tags", "--dirty", "--always"],
         capture_output=True,
         text=True,
         check=True,
@@ -46,6 +52,7 @@ def _run_launcher(
     tmp_path: Path,
     *component_options: str,
     image_version: str | None = None,
+    legacy_version: str | None = None,
 ) -> subprocess.CompletedProcess:
     archive = tmp_path / "memory.tar.gz"
     archive.touch()
@@ -59,9 +66,13 @@ def _run_launcher(
     environment = os.environ.copy()
     environment["ASI_API_KEY"] = "test-token"
     environment["PATH"] = f"{bin_dir}{os.pathsep}{environment['PATH']}"
-    environment["OMEGA_TEST_IMAGE_VERSION"] = (
-        image_version if image_version is not None else _host_omega_version()
-    )
+    if legacy_version is not None:
+        environment["OMEGA_TEST_OMEGA_VERSION"] = ""
+        environment["OMEGA_TEST_LEGACY_VERSION"] = legacy_version
+    else:
+        environment["OMEGA_TEST_IMAGE_VERSION"] = (
+            image_version if image_version is not None else _host_omega_version()
+        )
 
     return subprocess.run(
         [
@@ -134,3 +145,21 @@ def test_mismatched_image_version_aborts_before_container_replace(tmp_path):
     assert "Omega version=v0.0.0-test" in result.stderr
     assert "docker <rm>" not in result.stdout
     assert "<--name>" not in result.stdout
+
+
+def test_legacy_prefixed_image_version_prints_prefix_once(tmp_path):
+    result = _run_launcher(tmp_path, image_version="Omega version=v0.0.0-test")
+
+    assert result.returncode != 0
+    assert "Omega version=v0.0.0-test" in result.stderr
+    assert "Omega version=Omega version=" not in result.stderr
+    assert "docker <rm>" not in result.stdout
+
+
+def test_legacy_image_path_version_is_compared(tmp_path):
+    result = _run_launcher(tmp_path, legacy_version="v0.0.0-test")
+
+    assert result.returncode != 0
+    assert "Omega version=v0.0.0-test" in result.stderr
+    assert "Could not determine the Docker image version" not in result.stderr
+    assert "docker <rm>" not in result.stdout
