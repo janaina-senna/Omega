@@ -651,14 +651,24 @@ bare_omega_version() {
     fi
 }
 
+strip_legacy_version_prefix() {
+    local version="$1"
+    local prefix
+    for prefix in "Omega version=" "OmegaClaw version="; do
+        if [[ "$version" == "$prefix"* ]]; then
+            version="${version#"$prefix"}"
+            version="$(_trim "$version")"
+            break
+        fi
+    done
+    printf '%s' "$version"
+}
+
 version() {
     local bare
     bare="$(_trim "$(bare_omega_version 2>/dev/null || true)")"
     bare="${bare%$'\r'}"
-    if [[ "$bare" == "Omega version="* ]]; then
-        bare="${bare#Omega version=}"
-        bare="$(_trim "$bare")"
-    fi
+    bare="$(strip_legacy_version_prefix "$bare")"
     if [[ -z "$bare" || "$bare" == "unknown" || "$bare" == "Omega unknown" ]]; then
         printf '%s\n' "Omega unknown"
     else
@@ -678,10 +688,7 @@ comparable_omega_version() {
     local version
     version="$(_trim "${1-}")"
     version="${version%$'\r'}"
-    if [[ "$version" == "Omega version="* ]]; then
-        version="${version#Omega version=}"
-        version="$(_trim "$version")"
-    fi
+    version="$(strip_legacy_version_prefix "$version")"
     if [[ -z "$version" || "$version" == "unknown" || "$version" == "Omega unknown" ]]; then
         printf ''
         return 0

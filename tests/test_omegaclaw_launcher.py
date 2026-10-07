@@ -460,6 +460,15 @@ def test_legacy_prefixed_image_version_prints_prefix_once(tmp_path):
     assert "docker <rm>" not in result.stdout
 
 
+def test_legacy_omegaclaw_prefix_prints_once(tmp_path):
+    result = _run_launcher(tmp_path, image_version="OmegaClaw version=v0.1.19")
+
+    assert result.returncode != 0
+    assert "Image (singularitynet/omega:latest): Omega version=v0.1.19" in result.stderr
+    assert "OmegaClaw version=" not in result.stderr
+    assert "docker <rm>" not in result.stdout
+
+
 def test_legacy_image_path_version_is_compared(tmp_path):
     result = _run_launcher(tmp_path, legacy_version="v0.0.0-test")
 
