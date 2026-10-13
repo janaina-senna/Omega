@@ -696,6 +696,45 @@ comparable_omega_version() {
     strip_dirty_suffix "$version"
 }
 
+version_commit_id() {
+    local version="$1"
+    if [[ "$version" =~ -[0-9]+-g([0-9a-fA-F]{7,})$ ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+        return 0
+    fi
+    if [[ "$version" =~ ^[0-9a-fA-F]{7,}$ ]]; then
+        printf '%s' "$version"
+    fi
+    return 0
+}
+
+commit_abbreviations_match() {
+    local left right short long
+    left="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+    right="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+    if [[ ${#left} -le ${#right} ]]; then
+        short="$left"
+        long="$right"
+    else
+        short="$right"
+        long="$left"
+    fi
+    [[ "$long" == "$short"* ]]
+}
+
+same_described_commit() {
+    local left="$1" right="$2" left_id right_id
+    if [[ "$left" == "$right" ]]; then
+        return 0
+    fi
+    left_id="$(version_commit_id "$left")"
+    right_id="$(version_commit_id "$right")"
+    if [[ -z "$left_id" || -z "$right_id" ]]; then
+        return 1
+    fi
+    commit_abbreviations_match "$left_id" "$right_id"
+}
+
 read_image_omega_version() {
     local raw="" path
     for path in /PeTTa/repos/Omega/version /PeTTa/repos/OmegaClaw-Core/version; do
@@ -724,7 +763,7 @@ ensure_launcher_matches_image() {
         return 0
     fi
 
-    if [[ "$script_version" != "$image_version" ]]; then
+    if ! same_described_commit "$script_version" "$image_version"; then
         cat >&2 <<EOF
 The launcher script and Docker image versions do not match.
   Script: Omega version=${script_version}

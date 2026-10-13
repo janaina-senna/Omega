@@ -1,4 +1,6 @@
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -63,7 +65,10 @@ def _load_installer_namespace():
 
 
 def _stub_docker_environment(
-    tmp_path: Path, transfer_gid: int | None = None, stub_runtime_validator: bool = True
+    tmp_path: Path,
+    transfer_gid: int | None = None,
+    stub_runtime_validator: bool = True,
+    script_version: str | None = None,
 ) -> dict:
     if transfer_gid is None:
         transfer_gid = tmp_path.stat().st_gid
@@ -86,6 +91,19 @@ def _stub_docker_environment(
             encoding="utf-8",
         )
         python3.chmod(0o755)
+    if script_version is not None:
+        real_git = shutil.which("git")
+        git = bin_dir / "git"
+        git.write_text(
+            "#!/bin/sh\n"
+            "if [ \"$1\" = \"-C\" ] && [ \"$3\" = \"describe\" ]; then\n"
+            f"  printf '%s\\n' {shlex.quote(script_version)}\n"
+            "  exit 0\n"
+            "fi\n"
+            f"exec {shlex.quote(real_git)} \"$@\"\n",
+            encoding="utf-8",
+        )
+        git.chmod(0o755)
     environment = os.environ.copy()
     environment["ASI_API_KEY"] = "test-token"
     environment["PATH"] = f"{bin_dir}{os.pathsep}{environment['PATH']}"
@@ -101,6 +119,7 @@ def _run_launcher(
     stub_runtime_validator: bool = True,
     image_version: str | None = None,
     legacy_version: str | None = None,
+    script_version: str | None = None,
 ) -> subprocess.CompletedProcess:
     if transfer_dir is None:
         transfer_dir = tmp_path
@@ -118,7 +137,10 @@ def _run_launcher(
         launcher_options.extend(["--memory-import", archive.name])
 
     environment = _stub_docker_environment(
-        tmp_path, transfer_gid, stub_runtime_validator=stub_runtime_validator
+        tmp_path,
+        transfer_gid,
+        stub_runtime_validator=stub_runtime_validator,
+        script_version=script_version,
     )
     if legacy_version is not None:
         environment["OMEGA_TEST_OMEGA_VERSION"] = ""
@@ -466,6 +488,58 @@ def test_legacy_omegaclaw_prefix_prints_once(tmp_path):
     assert result.returncode != 0
     assert "Image (singularitynet/omega:latest): Omega version=v0.1.19" in result.stderr
     assert "OmegaClaw version=" not in result.stderr
+    assert "docker <rm>" not in result.stdout
+
+
+def _describe_commit(version: str) -> tuple[str, str] | None:
+    described = re.fullmatch(r"(.+-\d+-g)([0-9a-fA-F]{7,})", version.removesuffix("-dirty"))
+    if described is None:
+        return None
+    return described.group(1), described.group(2)
+
+
+def test_longer_abbreviation_matches_same_commit(tmp_path):
+    described = _describe_commit(_host_omega_version())
+    if described is None:
+        pytest.skip("checkout describe has no commit abbreviation")
+    prefix, commit = described
+    result = _run_launcher(
+        tmp_path,
+        script_version=f"{prefix}{commit}705ea",
+        image_version=f"{prefix}{commit}",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "The launcher script and Docker image versions do not match." not in result.stderr
+    assert "docker <rm>" in result.stdout
+
+
+def test_shallow_clone_hash_matches_described_commit(tmp_path):
+    described = _describe_commit(_host_omega_version())
+    if described is None:
+        pytest.skip("checkout describe has no commit abbreviation")
+    prefix, commit = described
+    result = _run_launcher(
+        tmp_path,
+        script_version=commit,
+        image_version=f"{prefix}{commit}",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "The launcher script and Docker image versions do not match." not in result.stderr
+    assert "docker <rm>" in result.stdout
+
+
+def test_different_commit_abbreviation_is_refused(tmp_path):
+    result = _run_launcher(
+        tmp_path,
+        script_version="v0.1.20-11-g9cdcbfe705ea",
+        image_version="v0.1.20-11-gdeadbee",
+    )
+
+    assert result.returncode != 0
+    assert "Omega version=v0.1.20-11-g9cdcbfe705ea" in result.stderr
+    assert "Omega version=v0.1.20-11-gdeadbee" in result.stderr
     assert "docker <rm>" not in result.stdout
 
 
